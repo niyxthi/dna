@@ -2,8 +2,6 @@ from core.dna_encoder import DNAEncoder
 from core.feistel_network import FeistelNetwork
 from core.quantum_keygen import QuantumResistantKeyGen
 from service.key_management import KeyManagementService
-
-
 class CryptographyService:
     def __init__(self):
         self.dna_encoder = DNAEncoder()
