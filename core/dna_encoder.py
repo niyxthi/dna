@@ -1,4 +1,14 @@
 class DNAEncoder:
+    # 2-bit mapping (kept for backward compatibility / other uses)
+    binary_to_dna_map = {
+        "00": 'A',
+        "01": 'C',
+        "10": 'G',
+        "11": 'T'
+    }
+    dna_to_binary_map = {v: k for k, v in binary_to_dna_map.items()}
+
+    # 64 codons (3-base combinations)
     CODONS = [
         'AAA','AAC','AAG','AAT','ACA','ACC','ACG','ACT',
         'AGA','AGC','AGG','AGT','ATA','ATC','ATG','ATT',
@@ -12,67 +22,128 @@ class DNAEncoder:
 
     CODON_TO_INDEX = {codon: idx for idx, codon in enumerate(CODONS)}
 
-    # (old maps can stay if you want, for backward compatibility)
-    binary_to_dna_map = {
-        "00": 'A',
-        "01": 'C',
-        "10": 'G',
-        "11": 'T'
-    }
-    dna_to_binary_map = {v: k for k, v in binary_to_dna_map.items()}
+    # Standard genetic code (codon -> amino acid)
+    GENETIC_CODE = {
+        # Phenylalanine (F)
+        "TTT": "F", "TTC": "F",
 
-    binary_to_dna_map = {
-        "00": 'A',
-        "01": 'C',
-        "10": 'G',
-        "11": 'T'
+        # Leucine (L)
+        "TTA": "L", "TTG": "L",
+        "CTT": "L", "CTC": "L", "CTA": "L", "CTG": "L",
+
+        # Isoleucine (I)
+        "ATT": "I", "ATC": "I", "ATA": "I",
+
+        # Methionine / Start (M)
+        "ATG": "M",
+
+        # Valine (V)
+        "GTT": "V", "GTC": "V", "GTA": "V", "GTG": "V",
+
+        # Serine (S)
+        "TCT": "S", "TCC": "S", "TCG": "S", "TCA": "S",
+        "AGT": "S", "AGC": "S",
+
+        # Proline (P)
+        "CCT": "P", "CCC": "P", "CCA": "P", "CCG": "P",
+
+        # Threonine (T)
+        "ACT": "T", "ACC": "T", "ACA": "T", "ACG": "T",
+
+        # Alanine (A)
+        "GCT": "A", "GCC": "A", "GCA": "A", "GCG": "A",
+
+        # Tyrosine (Y)
+        "TAT": "Y", "TAC": "Y",
+
+        # Histidine (H)
+        "CAT": "H", "CAC": "H",
+
+        # Glutamine (Q)
+        "CAA": "Q", "CAG": "Q",
+
+        # Asparagine (N)
+        "AAT": "N", "AAC": "N",
+
+        # Lysine (K)
+        "AAA": "K", "AAG": "K",
+
+        # Aspartic Acid (D)
+        "GAT": "D", "GAC": "D",
+
+        # Glutamic Acid (E)
+        "GAA": "E", "GAG": "E",
+
+        # Cysteine (C)
+        "TGT": "C", "TGC": "C",
+
+        # Tryptophan (W)
+        "TGG": "W",
+
+        # Arginine (R)
+        "CGT": "R", "CGC": "R", "CGA": "R", "CGG": "R",
+        "AGA": "R", "AGG": "R",
+
+        # Glycine (G)
+        "GGT": "G", "GGC": "G", "GGA": "G", "GGG": "G",
+
+        # STOP codons
+        "TAA": "*", "TAG": "*", "TGA": "*"
     }
+
+    # ---------- Text / binary ----------
 
     @staticmethod
     def text_to_binary(text: str) -> str:
+        """
+        UTF-8 text -> binary string.
+        """
         data = text.encode("utf-8")
         return ''.join(f"{byte:08b}" for byte in data)
 
     @staticmethod
     def binary_to_text(binary_str: str) -> str:
+        """
+        Binary string -> UTF-8 text (best effort).
+        """
+        if len(binary_str) % 8 != 0:
+            # ignore trailing partial byte (shouldn't normally happen)
+            binary_str = binary_str[:len(binary_str) - (len(binary_str) % 8)]
         bytes_list = [
             int(binary_str[i:i+8], 2)
             for i in range(0, len(binary_str), 8)
         ]
         return bytes(bytes_list).decode("utf-8", errors="ignore")
-    
+
+    # ---------- Codon DNA encoding ----------
+
     @classmethod
-    def binary_to_codon_dna(cls, binary_str: str) -> str:
+    def binary_to_codon_dna(cls, binary_str: str):
         """
-        Convert a binary string into a DNA string using 6-bit groups -> codons (3 bases).
-        Padding: if bits not multiple of 6, pad with zeros at the end.
+        Convert binary -> codon DNA using 6-bit groups.
+        Returns (dna_string, pad_len_bits).
+        pad_len is how many '0' bits we appended at the END.
         """
-        # Pad to multiple of 6
-        if len(binary_str) % 6 != 0:
-            pad_len = 6 - (len(binary_str) % 6)
+        pad_len = (6 - (len(binary_str) % 6)) % 6
+        if pad_len != 0:
             binary_str += '0' * pad_len
-        else:
-            pad_len = 0
 
         dna_seq = []
         for i in range(0, len(binary_str), 6):
             chunk = binary_str[i:i+6]
-            idx = int(chunk, 2)          # 0..63
-            codon = cls.CODONS[idx]
-            dna_seq.append(codon)
+            idx = int(chunk, 2)  # 0..63
+            dna_seq.append(cls.CODONS[idx])
 
-        # You can optionally return pad_len too if you want to track it;
-        # for now we'll assume we handle padding by knowing original length at decryption.
-        return ''.join(dna_seq)
+        return ''.join(dna_seq), pad_len
 
     @classmethod
     def codon_dna_to_binary(cls, dna_str: str) -> str:
         """
-        Inverse of binary_to_codon_dna.
-        Assumes dna_str length is multiple of 3.
+        Codon DNA -> binary (6 bits per codon).
+        Does NOT remove padding; caller must strip pad_len bits.
         """
         if len(dna_str) % 3 != 0:
-            raise ValueError("DNA length must be a multiple of 3 (codons)")
+            raise ValueError("DNA length must be a multiple of 3 (codons).")
 
         bits = []
         for i in range(0, len(dna_str), 3):
@@ -83,42 +154,41 @@ class DNAEncoder:
             bits.append(f"{idx:06b}")
         return ''.join(bits)
 
-    # Partial example – fill the full table from any standard codon chart
-    GENETIC_CODE = {
-        # Phenylalanine
-        "TTT": "F", "TTC": "F",
-        # Leucine
-        "TTA": "L", "TTG": "L", "CTT": "L", "CTC": "L", "CTA": "L", "CTG": "L",
-        # ...
-        # Fill in the rest: I, M, V, S, P, T, A, Y, H, Q, N, K, D, E, C, W, R, G, and stop codons (*)
-    }
+    # ---------- Amino acid projection (for visualization only) ----------
 
     @classmethod
     def dna_to_amino_acids(cls, dna_str: str) -> str:
         """
-        Map DNA codon string to amino acid sequence.
-        This is *one-way* (not used for decryption).
+        DNA codon string -> amino acid sequence.
+        Not used for decryption (one-way mapping).
         """
         if len(dna_str) % 3 != 0:
-            raise ValueError("DNA length must be a multiple of 3 to map to amino acids.")
+            raise ValueError("DNA length must be a multiple of 3.")
         aa_seq = []
         for i in range(0, len(dna_str), 3):
             codon = dna_str[i:i+3]
-            aa = cls.GENETIC_CODE.get(codon, 'X')  # X for unknown / padding codons
+            aa = cls.GENETIC_CODE.get(codon, 'X')
             aa_seq.append(aa)
         return ''.join(aa_seq)
 
+    # ---------- Old 2-bit DNA mapping (still available) ----------
 
     @classmethod
     def binary_to_dna(cls, binary_str: str) -> str:
+        """
+        2-bit -> base (A/C/G/T). Not used in new cipher, but kept.
+        """
         if len(binary_str) % 2 != 0:
-            binary_str += '0'  # padding if odd length
-        dna_seq = ""
+            binary_str += '0'
+        dna_seq = []
         for i in range(0, len(binary_str), 2):
             pair = binary_str[i:i+2]
-            dna_seq += cls.binary_to_dna_map[pair]
-        return dna_seq
+            dna_seq.append(cls.binary_to_dna_map[pair])
+        return ''.join(dna_seq)
 
     @classmethod
     def dna_to_binary(cls, dna_str: str) -> str:
+        """
+        Base (A/C/G/T) -> 2-bit binary. Not used in new cipher, but kept.
+        """
         return ''.join(cls.dna_to_binary_map[base] for base in dna_str)
