@@ -11,37 +11,39 @@ SERVER_PORT = 5000
 def main():
     service = CryptographyService()
 
-    dna_key = input("Enter DNA key (A/C/G/T): ").strip()
+    print("=== DNA Cryptography Client ===\n")
+    dna_key = input("Enter DNA key (A/C/G/T): ").strip().upper()
     plaintext = input("Enter plaintext to encrypt: ")
 
-    # 1) Encrypt on client side
+    # Encrypt locally on client side
     ciphertext = service.encrypt(plaintext, dna_key)
 
-    # 2) Derive quantum-resistant seed (server will only see this, not DNA)
+    # Derive seed from DNA key (server never sees DNA key)
     seed = QuantumResistantKeyGen.base_seed_from_dna(dna_key)
     seed_hex = seed.hex()
 
-    print("\n[CLIENT] Ciphertext to send:")
+    print("\n[CLIENT] Ciphertext:")
     print(ciphertext)
-    print("\n[CLIENT] Seed (hex, first 64):", seed_hex[:64], "...")
 
-    # 3) Prepare JSON payload
-    message = {
+    print("\n[CLIENT] Sending seed (first 64 hex):")
+    print(seed_hex[:64], "...")
+
+    # Build JSON payload
+    data = json.dumps({
         "ciphertext": ciphertext,
         "seed": seed_hex
-    }
-    data = json.dumps(message).encode("utf-8")
+    }).encode("utf-8")
 
-    # 4) Send to server and receive response
+    # Connect to server
+    print(f"\n[CLIENT] Connecting to server at {SERVER_HOST}:{SERVER_PORT}...")
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        print(f"\n[CLIENT] Connecting to server {SERVER_HOST}:{SERVER_PORT} ...")
         s.connect((SERVER_HOST, SERVER_PORT))
         s.sendall(data)
 
-        # We assume response fits under 8 KB for demo
+        # Receive decrypted plaintext from server
         response = s.recv(8192).decode("utf-8")
 
-    print("\n[CLIENT] Server responded with decrypted plaintext:")
+    print("\n[CLIENT] Server responded with plaintext:")
     print(repr(response))
 
 
