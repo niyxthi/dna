@@ -11,7 +11,7 @@ SERVER_PORT = 5000
 def main():
     service = CryptographyService()
 
-    print("=== DNA Cryptography Client ===\n")
+    print("=== DNA Cryptography Client (MAC-AA) ===\n")
     dna_key = input("Enter DNA key (A/C/G/T): ").strip().upper()
     plaintext = input("Enter plaintext to encrypt: ")
 
